@@ -1,0 +1,31 @@
+# FastAPI Backend Dependencies
+# Optimized for Render.com deployment - NO C/C++ compilation required
+
+# Core FastAPI framework
+fastapi==0.115.12
+
+# ASGI server - Using base uvicorn WITHOUT [standard] extras
+# This avoids greenlet, ujson, httptools, and uvloop that require C compilation
+uvicorn==0.34.0
+
+# MongoDB async driver - Motor for async operations
+motor==3.7.2
+
+# MongoDB synchronous driver (required by Motor)
+pymongo==4.10.1
+
+# Environment variables management
+python-dotenv==1.0.1
+
+# Data validation and serialization
+pydantic==2.10.6
+
+# File upload support (multipart/form-data)
+python-multipart==0.0.20
+
+# CORS middleware (already included in FastAPI, but explicit for clarity)
+# No additional package needed - using fastapi.middleware.cors
+
+# Note: If you need JSON performance optimization in the future,
+# use orjson instead of ujson (more compatible):
+# orjson==3.10.12

@@ -1,0 +1,19 @@
+# Render.com Deploy Configuration
+# This file configures the backend deployment on Render
+
+services:
+  - type: web
+    name: fashion-catalog-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: MONGO_URL
+        sync: false # Set this manually in Render dashboard
+      - key: MONGO_DB_NAME
+        value: fashion_catalog
+      - key: CORS_ORIGINS
+        sync: false # Set this manually with your Vercel URL
