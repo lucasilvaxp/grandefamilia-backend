@@ -1,76 +1,82 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-import shutil
-import os
-from pathlib import Path
+from pydantic import BaseModel
 from datetime import datetime
 import secrets
+import base64
+import hashlib
 
 router = APIRouter()
-
-# Create uploads directory if it doesn't exist
-UPLOAD_DIR = Path("static/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
+class ImageUpload(BaseModel):
+    filename: str
+    content_type: str
+    data: str  # Base64 encoded data URL (data:image/jpeg;base64,...)
+
 @router.post("/upload")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(upload: ImageUpload):
     """
-    Upload an image file
-    Returns the URL of the uploaded image
+    Recebe uma imagem em base64 e retorna a data URL para armazenamento no MongoDB.
+    Solução serverless-friendly que não depende de filesystem.
     """
     try:
-        # Validate file extension
-        file_ext = Path(file.filename).suffix.lower()
-        if file_ext not in ALLOWED_EXTENSIONS:
+        # Validate data URL format
+        if not upload.data.startswith('data:image/'):
+            raise HTTPException(status_code=400, detail="Formato de imagem inválido")
+        
+        # Validate content type
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+        if upload.content_type not in allowed_types:
             raise HTTPException(
-                status_code=400,
-                detail=f"Tipo de arquivo inválido. Use: {', '.join(ALLOWED_EXTENSIONS)}"
+                status_code=400, 
+                detail=f"Tipo de arquivo não permitido. Use: {', '.join(allowed_types)}"
             )
         
-        # Validate file size
-        contents = await file.read()
-        if len(contents) > MAX_FILE_SIZE:
+        # Extract and validate base64 data
+        try:
+            header, encoded = upload.data.split(',', 1)
+            image_data = base64.b64decode(encoded)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Dados de imagem corrompidos")
+        
+        # Validate size (5MB max)
+        if len(image_data) > MAX_FILE_SIZE:
             raise HTTPException(
-                status_code=400,
-                detail="Arquivo muito grande. Tamanho máximo: 5MB"
+                status_code=400, 
+                detail=f"Imagem muito grande. Máximo: 5MB"
             )
         
-        # Generate unique filename
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        random_str = secrets.token_hex(8)
-        filename = f"{timestamp}_{random_str}{file_ext}"
-        file_path = UPLOAD_DIR / filename
+        # Generate metadata
+        timestamp = datetime.utcnow().isoformat()
+        unique_string = f"{upload.filename}{timestamp}".encode()
+        file_hash = hashlib.md5(unique_string).hexdigest()
         
-        # Save file
-        with open(file_path, "wb") as f:
-            f.write(contents)
+        # Return the data URL - will be stored in MongoDB with the product
+        return JSONResponse(content={
+            "url": upload.data,
+            "filename": upload.filename,
+            "content_type": upload.content_type,
+            "hash": file_hash,
+            "size": len(image_data),
+            "uploaded_at": timestamp
+        })
         
-        # Return public URL
-        # Adjust this URL based on your backend's public URL
-        public_url = f"/static/uploads/{filename}"
-        
-        return JSONResponse(content={"url": public_url})
-    
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao fazer upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao processar upload: {str(e)}")
 
-@router.delete("/upload/{filename}")
-async def delete_image(filename: str):
-    """
-    Delete an uploaded image
-    """
-    try:
-        file_path = UPLOAD_DIR / filename
-        if file_path.exists():
-            os.remove(file_path)
-            return JSONResponse(content={"message": "Imagem deletada com sucesso"})
-        else:
-            raise HTTPException(status_code=404, detail="Imagem não encontrada")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao deletar imagem: {str(e)}")
+@router.get("/upload/health")
+async def upload_health():
+    """Health check endpoint for upload service"""
+    return {
+        "status": "ok",
+        "service": "image-upload",
+        "storage": "base64-mongodb",
+        "max_size": "5MB",
+        "allowed_formats": ["JPEG", "PNG", "WebP"]
+    }
