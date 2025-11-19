@@ -4,7 +4,7 @@ Entry point for the backend server
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import products, categories
+from routes import products, categories, settings, upload
 import os
 from dotenv import load_dotenv
 
@@ -40,6 +40,8 @@ app.add_middleware(
 # Include routers
 app.include_router(products.router)
 app.include_router(categories.router)
+app.include_router(settings.router)
+app.include_router(upload.router)
 
 @app.get("/")
 async def root():
